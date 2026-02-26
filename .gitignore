@@ -201,6 +201,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Banco de dados do GAIA
+*.db
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
