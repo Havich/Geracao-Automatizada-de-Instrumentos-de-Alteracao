@@ -11,3 +11,11 @@ Projeto para a discilplina de Análise e Projeto de Sistemas: Ferramenta para So
 ### Requisitos Não Funcionais (RNF)
 * **RNF01:** Persistência de dados utilizando banco de dados relacional SQLite.
 * **RNF02:** Interface desenvolvida com o framework Streamlit (Python).
+
+
+## Protótipos de Interface
+
+Os protótipos visuais do GAIA foram desenvolvidos para validar o fluxo de usuário, a usabilidade (UI/UX) e as regras de acesso antes da implementação final.
+
+* 📄 **Arquivo PDF:** O documento completo com todas as telas (`PROTOTIPO ALTA FIDELIDADE GAIA.pdf`) está disponível na raiz deste repositório.
+* 🎨 **Link do Figma:** [Acesse o projeto do Figma aqui](https://www.figma.com/proto/ZO0Rp6Q98IydmFRgzfSbSQ/Untitled?node-id=1-4&t=fpSyG1h1XoghppTN-1&scaling=scale-down&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=1%3A4)
