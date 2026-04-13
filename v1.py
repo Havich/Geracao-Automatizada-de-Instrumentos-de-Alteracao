@@ -8,9 +8,12 @@ from docx.shared import Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # ==========================================
-# CONFIGURAÇÃO DE LAYOUT E CSS
+# Sprint II - Requisitos
+# Sprint III - Protótipos de Tela
 # ==========================================
-st.set_page_config(page_title="GAIA", page_icon= "logo.png", layout="centered")
+
+# CONFIGURAÇÃO DE LAYOUT
+st.set_page_config(page_title="GAIA", page_icon="logo.png", layout="centered")
 
 st.markdown("""
     <style>
@@ -54,26 +57,31 @@ def get_db():
 def inicializar_banco():
     with get_db() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS tb_perfil_acesso (id INTEGER PRIMARY KEY, nome_perfil TEXT UNIQUE NOT NULL)")
+        
         conn.execute("""CREATE TABLE IF NOT EXISTS tb_usuario (
             id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, login TEXT UNIQUE,
             senha_hash TEXT, id_perfil INTEGER,
             FOREIGN KEY (id_perfil) REFERENCES tb_perfil_acesso (id))""")
+        
         conn.execute("""CREATE TABLE IF NOT EXISTS tb_empresa (
             id INTEGER PRIMARY KEY AUTOINCREMENT, cnpj TEXT UNIQUE, nome_empresarial TEXT,
             nome_fantasia TEXT,
             nire TEXT, cidade TEXT, uf TEXT, cep TEXT, logradouro TEXT, numero TEXT,
             bairro TEXT, complemento TEXT)""")
+        
         conn.execute("""CREATE TABLE IF NOT EXISTS tb_socio (
             id INTEGER PRIMARY KEY AUTOINCREMENT, id_empresa INTEGER, nome TEXT,
             nacionalidade TEXT, cpf TEXT, rg TEXT, orgao_emissor TEXT,
             estado_civil TEXT, data_nasc TEXT, profissao TEXT, cep TEXT,
             logradouro TEXT, numero TEXT, complemento TEXT, bairro TEXT, cidade TEXT, uf TEXT,
             FOREIGN KEY (id_empresa) REFERENCES tb_empresa (id) ON DELETE CASCADE)""")
+        
         conn.execute("""CREATE TABLE IF NOT EXISTS tb_documento (
             id INTEGER PRIMARY KEY AUTOINCREMENT, id_empresa INTEGER, id_usuario INTEGER,
             data_geracao DATETIME DEFAULT CURRENT_TIMESTAMP, tipo_documento TEXT, status TEXT DEFAULT 'Gerado',
             FOREIGN KEY (id_empresa) REFERENCES tb_empresa (id) ON DELETE CASCADE,
             FOREIGN KEY (id_usuario) REFERENCES tb_usuario (id))""")
+        
         conn.commit()
 
         # Migração: adiciona colunas que podem não existir em bancos antigos
@@ -116,227 +124,8 @@ def nav(p):
     st.rerun()
 
 # ==========================================
-# FORMULÁRIO REUTILIZÁVEL DE SÓCIO
+# Sprint I - Login
 # ==========================================
-def _form_socio(titulo, defaults=None):
-    d = defaults or {}
-    estados_civis = ["", "Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"]
-    cabecalho()
-    st.subheader(titulo)
-
-    with st.form("f_socio"):
-        nome = st.text_input("NOME COMPLETO*", value=d.get('nome') or '')
-        c1, c2 = st.columns(2)
-        nac = c1.text_input("NACIONALIDADE*", value=d.get('nacionalidade') or 'BRASILEIRO(A)')
-        profissao = c2.text_input("PROFISSÃO", value=d.get('profissao') or '')
-        c3, c4 = st.columns(2)
-        cpf = c3.text_input("CPF*", value=d.get('cpf') or '')
-        # Máscara JS removida para evitar o bug de apagar a data
-        data_nasc = c4.text_input("DATA NASCIMENTO (DD/MM/AAAA)", value=d.get('data_nasc') or '')
-        c5, c6 = st.columns(2)
-        rg = c5.text_input("RG", value=d.get('rg') or '')
-        orgao = c6.text_input("ÓRGÃO EMISSOR", value=d.get('orgao_emissor') or '')
-        ec_valor = d.get('estado_civil') or ""
-        ec_idx = estados_civis.index(ec_valor) if ec_valor in estados_civis else 0
-        estado_civil = st.selectbox("ESTADO CIVIL", estados_civis, index=ec_idx)
-        st.markdown("**Endereço**")
-        c7, c8 = st.columns([3, 1])
-        logradouro = c7.text_input("LOGRADOURO*", value=d.get('logradouro') or '')
-        numero = c8.text_input("NÚMERO*", value=d.get('numero') or '')
-        c9, c10 = st.columns(2)
-        complemento = c9.text_input("COMPLEMENTO", value=d.get('complemento') or '')
-        bairro = c10.text_input("BAIRRO*", value=d.get('bairro') or '')
-        c11, c12, c13 = st.columns([3, 1, 2])
-        cidade = c11.text_input("CIDADE*", value=d.get('cidade') or '')
-        uf = c12.text_input("UF*", value=d.get('uf') or '')
-        cep = c13.text_input("CEP*", value=d.get('cep') or '')
-        b1, b2 = st.columns(2)
-        btn_v = b1.form_submit_button("⬅️ CANCELAR", type="secondary", use_container_width=True)
-        btn_ok = b2.form_submit_button("💾 CONFIRMAR", type="primary", use_container_width=True)
-
-    return btn_v, btn_ok, dict(
-        nome=(nome or "").upper(), nacionalidade=(nac or "").upper(), cpf=cpf, rg=rg,
-        orgao_emissor=(orgao or "").upper(), estado_civil=estado_civil, data_nasc=data_nasc,
-        profissao=(profissao or "").upper(), logradouro=(logradouro or "").upper(),
-        numero=numero, complemento=(complemento or "").upper(), bairro=(bairro or "").upper(),
-        cidade=(cidade or "").upper(), uf=(uf or "").upper(), cep=cep
-    )
-
-# ==========================================
-# GERAÇÃO DO DOCUMENTO WORD
-# ==========================================
-def gerar_doc_alteracao(empresa, socios, evento_tipo, evento_dados):
-    doc = Document()
-
-    # Margens
-    for section in doc.sections:
-        section.top_margin = Cm(2.5)
-        section.bottom_margin = Cm(2.5)
-        section.left_margin = Cm(3)
-        section.right_margin = Cm(3)
-
-    def add_paragrafo(texto, bold=False, size=12, align=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after=6):
-        p = doc.add_paragraph()
-        p.alignment = align
-        p.paragraph_format.space_after = Pt(space_after)
-        run = p.add_run(texto)
-        run.bold = bold
-        run.font.size = Pt(size)
-        run.font.name = 'Arial'
-        return p
-
-    # Título
-    titulo = doc.add_paragraph()
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    titulo.paragraph_format.space_after = Pt(12)
-    run_titulo = titulo.add_run(f"ALTERAÇÃO CONTRATUAL {empresa['nome_empresarial']}")
-    run_titulo.bold = True
-    run_titulo.font.size = Pt(14)
-    run_titulo.font.name = 'Arial'
-
-    # Qualificação dos sócios
-    for i, s in enumerate(socios):
-        partes = []
-        partes.append(s.get('nome', ''))
-        if s.get('nacionalidade'):
-            partes.append(f"nacionalidade {s['nacionalidade']}")
-        if s.get('estado_civil'):
-            partes.append(s['estado_civil'])
-        if s.get('data_nasc'):
-            partes.append(f"nascido em {s['data_nasc']}")
-        if s.get('profissao'):
-            partes.append(f"profissão: {s['profissao']}")
-        if s.get('cpf'):
-            partes.append(f"nº do CPF: {s['cpf']}")
-        if s.get('rg'):
-            partes.append(f"identidade: {s['rg']}")
-        if s.get('orgao_emissor'):
-            partes.append(f"órgão expedidor: {s['orgao_emissor']}")
-
-        end_partes = []
-        if s.get('logradouro'):
-            end_partes.append(s['logradouro'])
-        if s.get('complemento'):
-            end_partes.append(s['complemento'])
-        if s.get('numero'):
-            end_partes.append(f"número {s['numero']}")
-        if s.get('bairro'):
-            end_partes.append(f"bairro {s['bairro']}")
-        if s.get('cidade') and s.get('uf'):
-            end_partes.append(f"município {s['cidade']} - {s['uf']}")
-        if s.get('cep'):
-            end_partes.append(f"CEP: {s['cep']}")
-
-        if end_partes:
-            partes.append(f"RESIDENTE E DOMICILIADO no(a): {', '.join(end_partes)}")
-
-        texto_socio = ', '.join(partes) + ','
-        add_paragrafo(texto_socio)
-
-    # Qualificação da empresa
-    emp_partes = [
-        f"Sócio(s) da sociedade limitada {empresa['nome_empresarial']}",
-    ]
-    end_emp = []
-    if empresa.get('logradouro'):
-        end_emp.append(empresa['logradouro'])
-    if empresa.get('numero'):
-        end_emp.append(f"número {empresa['numero']}")
-    if empresa.get('bairro'):
-        end_emp.append(f"bairro {empresa['bairro']}")
-    if empresa.get('complemento'):
-        end_emp.append(empresa['complemento'])
-    if empresa.get('cidade') and empresa.get('uf'):
-        end_emp.append(f"município {empresa['cidade']} - {empresa['uf']}")
-    if empresa.get('cep'):
-        end_emp.append(f"CEP: {empresa['cep']}")
-    if end_emp:
-        emp_partes.append(f"sediada na {', '.join(end_emp)}")
-    if empresa.get('nire'):
-        emp_partes.append(f"com seu contrato social arquivado nessa Junta Comercial")
-    if empresa.get('cnpj'):
-        emp_partes.append(f"devidamente inscrita no CNPJ sob o nº {empresa['cnpj']}")
-    emp_partes.append("resolvem:")
-
-    add_paragrafo(', '.join(emp_partes))
-
-    # Cláusula conforme evento
-    clausula_num = 1
-
-    if evento_tipo == 'mudanca_endereco':
-        novo_end = evento_dados
-        partes_end = []
-        if novo_end.get('logradouro'):
-            partes_end.append(novo_end['logradouro'])
-        if novo_end.get('numero'):
-            partes_end.append(f"número {novo_end['numero']}")
-        if novo_end.get('bairro'):
-            partes_end.append(f"bairro {novo_end['bairro']}")
-        if novo_end.get('complemento'):
-            partes_end.append(novo_end['complemento'])
-        if novo_end.get('cidade') and novo_end.get('uf'):
-            partes_end.append(f"município {novo_end['cidade']} - {novo_end['uf']}")
-        if novo_end.get('cep'):
-            partes_end.append(f"CEP: {novo_end['cep']}")
-
-        texto_clausula = (
-            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a ter sua sede no(a): "
-            f"{', '.join(partes_end)}."
-        )
-        add_paragrafo(texto_clausula, bold=True if clausula_num == 1 else False)
-        clausula_num += 1
-
-    elif evento_tipo == 'mudanca_nome':
-        novo_nome = evento_dados.get('nome_empresarial', '')
-        texto_clausula = (
-            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a denominar-se: {novo_nome}."
-        )
-        add_paragrafo(texto_clausula)
-        clausula_num += 1
-
-    elif evento_tipo == 'mudanca_nome_fantasia':
-        novo_nf = evento_dados.get('nome_fantasia', '')
-        texto_clausula = (
-            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a ter o TÍTULO DO ESTABELECIMENTO "
-            f"(NOME FANTASIA): {novo_nf}."
-        )
-        add_paragrafo(texto_clausula)
-        clausula_num += 1
-
-    # Cláusula final padrão
-    add_paragrafo(
-        f"Cláusula {_ordinal(clausula_num)} – As demais cláusulas e condições do contrato social "
-        "permanecem inalteradas."
-    )
-
-    add_paragrafo("")
-
-    # Local/data
-    add_paragrafo(
-        f"{empresa.get('cidade', '_____________')}, _____ de ________________ de _______.",
-        align=WD_ALIGN_PARAGRAPH.CENTER
-    )
-
-    add_paragrafo("")
-
-    # Assinaturas
-    for s in socios:
-        add_paragrafo("_" * 50, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
-        add_paragrafo(s.get('nome', ''), align=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
-    return buf
-
-def _ordinal(n):
-    nomes = {1: "Primeira", 2: "Segunda", 3: "Terceira", 4: "Quarta", 5: "Quinta"}
-    return nomes.get(n, str(n) + "ª")
-
-# ==========================================
-# TELAS
-# ==========================================
-
 def tela_login():
     cabecalho()
     st.subheader("Acesso ao sistema")
@@ -362,6 +151,8 @@ def tela_login():
 def tela_registrar():
     cabecalho()
     st.subheader("Criar nova conta")
+    # BUG CORRIGIDO: campos fora do form para evitar falso "já cadastrado"
+    # Usar st.session_state para capturar inputs
     with st.form("form_reg"):
         u = st.text_input("Usuário*")
         s1 = st.text_input("Senha*", type="password")
@@ -408,6 +199,52 @@ def tela_menu():
         st.session_state.user_id = None
         nav('login')
 
+# ==========================================
+# Sprint IV - Funcionalidades CRUD
+# ==========================================
+def _form_socio(titulo, defaults=None):
+    d = defaults or {}
+    estados_civis = ["", "Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"]
+    cabecalho()
+    st.subheader(titulo)
+
+    with st.form("f_socio"):
+        nome = st.text_input("NOME COMPLETO*", value=d.get('nome') or '')
+        c1, c2 = st.columns(2)
+        nac = c1.text_input("NACIONALIDADE*", value=d.get('nacionalidade') or 'BRASILEIRO(A)')
+        profissao = c2.text_input("PROFISSÃO", value=d.get('profissao') or '')
+        c3, c4 = st.columns(2)
+        cpf = c3.text_input("CPF*", value=d.get('cpf') or '')
+        data_nasc = c4.text_input("DATA NASCIMENTO (DD/MM/AAAA)", value=d.get('data_nasc') or '')
+        c5, c6 = st.columns(2)
+        rg = c5.text_input("RG", value=d.get('rg') or '')
+        orgao = c6.text_input("ÓRGÃO EMISSOR", value=d.get('orgao_emissor') or '')
+        ec_valor = d.get('estado_civil') or ""
+        ec_idx = estados_civis.index(ec_valor) if ec_valor in estados_civis else 0
+        estado_civil = st.selectbox("ESTADO CIVIL", estados_civis, index=ec_idx)
+        st.markdown("**Endereço**")
+        c7, c8 = st.columns([3, 1])
+        logradouro = c7.text_input("LOGRADOURO*", value=d.get('logradouro') or '')
+        numero = c8.text_input("NÚMERO*", value=d.get('numero') or '')
+        c9, c10 = st.columns(2)
+        complemento = c9.text_input("COMPLEMENTO", value=d.get('complemento') or '')
+        bairro = c10.text_input("BAIRRO*", value=d.get('bairro') or '')
+        c11, c12, c13 = st.columns([3, 1, 2])
+        cidade = c11.text_input("CIDADE*", value=d.get('cidade') or '')
+        uf = c12.text_input("UF*", value=d.get('uf') or '')
+        cep = c13.text_input("CEP*", value=d.get('cep') or '')
+        b1, b2 = st.columns(2)
+        btn_v = b1.form_submit_button("⬅️ CANCELAR", type="secondary", use_container_width=True)
+        btn_ok = b2.form_submit_button("💾 CONFIRMAR", type="primary", use_container_width=True)
+
+    return btn_v, btn_ok, dict(
+        nome=(nome or "").upper(), nacionalidade=(nac or "").upper(), cpf=cpf, rg=rg,
+        orgao_emissor=(orgao or "").upper(), estado_civil=estado_civil, data_nasc=data_nasc,
+        profissao=(profissao or "").upper(), logradouro=(logradouro or "").upper(),
+        numero=numero, complemento=(complemento or "").upper(), bairro=(bairro or "").upper(),
+        cidade=(cidade or "").upper(), uf=(uf or "").upper(), cep=cep
+    )
+
 def tela_cad_empresa():
     cabecalho()
     st.subheader("DADOS DA EMPRESA")
@@ -415,7 +252,7 @@ def tela_cad_empresa():
         cnpj = st.text_input("CNPJ*")
         nome = st.text_input("NOME EMPRESARIAL*")
         nire = st.text_input("NIRE (opcional)")
-        st.markdown("**Endereço**")
+        st.markdown("**Endereço da Sede***")
         c7, c8 = st.columns([3, 1])
         logradouro = c7.text_input("LOGRADOURO*")
         numero = c8.text_input("NÚMERO*")
@@ -660,6 +497,7 @@ def tela_editar_socio():
             (st.session_state.socio_id,)
         ).fetchone()
 
+    # Bbusca todos os campos ao editar
     defaults = {
         'nome': s[0], 'nacionalidade': s[1], 'cpf': s[2], 'rg': s[3],
         'orgao_emissor': s[4], 'estado_civil': s[5], 'data_nasc': s[6],
@@ -687,9 +525,8 @@ def tela_editar_socio():
         nav('lista_socios')
 
 # ==========================================
-# EVENTOS
+# Sprint V - Funcionalidade de Negócio
 # ==========================================
-
 def tela_escolher_evento():
     cabecalho()
     st.subheader("ESCOLHA O TIPO DE ALTERAÇÃO")
@@ -775,6 +612,174 @@ def tela_evento_nome_fantasia():
         else:
             st.session_state.evento_dados = {'nome_fantasia': novo_nf.upper()}
             nav('gerar_documento')
+
+def gerar_doc_alteracao(empresa, socios, evento_tipo, evento_dados):
+    doc = Document()
+
+    # Margens
+    for section in doc.sections:
+        section.top_margin = Cm(2.5)
+        section.bottom_margin = Cm(2.5)
+        section.left_margin = Cm(3)
+        section.right_margin = Cm(3)
+
+    def add_paragrafo(texto, bold=False, size=12, align=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after=6):
+        p = doc.add_paragraph()
+        p.alignment = align
+        p.paragraph_format.space_after = Pt(space_after)
+        run = p.add_run(texto)
+        run.bold = bold
+        run.font.size = Pt(size)
+        run.font.name = 'Arial'
+        return p
+
+    # Título
+    titulo = doc.add_paragraph()
+    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    titulo.paragraph_format.space_after = Pt(12)
+    run_titulo = titulo.add_run(f"ALTERAÇÃO CONTRATUAL {empresa['nome_empresarial']}")
+    run_titulo.bold = True
+    run_titulo.font.size = Pt(14)
+    run_titulo.font.name = 'Arial'
+
+    # Qualificação dos sócios
+    for i, s in enumerate(socios):
+        partes = []
+        partes.append(s.get('nome', ''))
+        if s.get('nacionalidade'):
+            partes.append(f"nacionalidade {s['nacionalidade']}")
+        if s.get('estado_civil'):
+            partes.append(s['estado_civil'])
+        if s.get('data_nasc'):
+            partes.append(f"nascido em {s['data_nasc']}")
+        if s.get('profissao'):
+            partes.append(f"profissão: {s['profissao']}")
+        if s.get('cpf'):
+            partes.append(f"nº do CPF: {s['cpf']}")
+        if s.get('rg'):
+            partes.append(f"identidade: {s['rg']}")
+        if s.get('orgao_emissor'):
+            partes.append(f"órgão expedidor: {s['orgao_emissor']}")
+
+        end_partes = []
+        if s.get('logradouro'):
+            end_partes.append(s['logradouro'])
+        if s.get('complemento'):
+            end_partes.append(s['complemento'])
+        if s.get('numero'):
+            end_partes.append(f"número {s['numero']}")
+        if s.get('bairro'):
+            end_partes.append(f"bairro {s['bairro']}")
+        if s.get('cidade') and s.get('uf'):
+            end_partes.append(f"município {s['cidade']} - {s['uf']}")
+        if s.get('cep'):
+            end_partes.append(f"CEP: {s['cep']}")
+
+        if end_partes:
+            partes.append(f"RESIDENTE E DOMICILIADO no(a): {', '.join(end_partes)}")
+
+        texto_socio = ', '.join(partes) + ','
+        add_paragrafo(texto_socio)
+
+    # Qualificação da empresa
+    emp_partes = [
+        f"Sócio(s) da sociedade limitada {empresa['nome_empresarial']}",
+    ]
+    end_emp = []
+    if empresa.get('logradouro'):
+        end_emp.append(empresa['logradouro'])
+    if empresa.get('numero'):
+        end_emp.append(f"número {empresa['numero']}")
+    if empresa.get('bairro'):
+        end_emp.append(f"bairro {empresa['bairro']}")
+    if empresa.get('complemento'):
+        end_emp.append(empresa['complemento'])
+    if empresa.get('cidade') and empresa.get('uf'):
+        end_emp.append(f"município {empresa['cidade']} - {empresa['uf']}")
+    if empresa.get('cep'):
+        end_emp.append(f"CEP: {empresa['cep']}")
+    if end_emp:
+        emp_partes.append(f"sediada na {', '.join(end_emp)}")
+    if empresa.get('nire'):
+        emp_partes.append(f"com seu contrato social arquivado nessa Junta Comercial")
+    if empresa.get('cnpj'):
+        emp_partes.append(f"devidamente inscrita no CNPJ sob o nº {empresa['cnpj']}")
+    emp_partes.append("resolvem:")
+
+    add_paragrafo(', '.join(emp_partes))
+
+    # Cláusula conforme evento
+    clausula_num = 1
+
+    if evento_tipo == 'mudanca_endereco':
+        novo_end = evento_dados
+        partes_end = []
+        if novo_end.get('logradouro'):
+            partes_end.append(novo_end['logradouro'])
+        if novo_end.get('numero'):
+            partes_end.append(f"número {novo_end['numero']}")
+        if novo_end.get('bairro'):
+            partes_end.append(f"bairro {novo_end['bairro']}")
+        if novo_end.get('complemento'):
+            partes_end.append(novo_end['complemento'])
+        if novo_end.get('cidade') and novo_end.get('uf'):
+            partes_end.append(f"município {novo_end['cidade']} - {novo_end['uf']}")
+        if novo_end.get('cep'):
+            partes_end.append(f"CEP: {novo_end['cep']}")
+
+        texto_clausula = (
+            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a ter sua sede no(a): "
+            f"{', '.join(partes_end)}."
+        )
+        add_paragrafo(texto_clausula, bold=True if clausula_num == 1 else False)
+        clausula_num += 1
+
+    elif evento_tipo == 'mudanca_nome':
+        novo_nome = evento_dados.get('nome_empresarial', '')
+        texto_clausula = (
+            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a denominar-se: {novo_nome}."
+        )
+        add_paragrafo(texto_clausula)
+        clausula_num += 1
+
+    elif evento_tipo == 'mudanca_nome_fantasia':
+        novo_nf = evento_dados.get('nome_fantasia', '')
+        texto_clausula = (
+            f"Cláusula {_ordinal(clausula_num)} – A sociedade passará a ter o TÍTULO DO ESTABELECIMENTO "
+            f"(NOME FANTASIA): {novo_nf}."
+        )
+        add_paragrafo(texto_clausula)
+        clausula_num += 1
+
+    # Cláusula final padrão
+    add_paragrafo(
+        f"Cláusula {_ordinal(clausula_num)} – As demais cláusulas e condições do contrato social "
+        "permanecem inalteradas."
+    )
+
+    add_paragrafo("")
+
+    # Local/data
+    add_paragrafo(
+        f"{empresa.get('cidade', '_____________')}, _____ de ________________ de _______.",
+        align=WD_ALIGN_PARAGRAPH.CENTER
+    )
+
+    add_paragrafo("")
+
+    # Assinaturas
+    for s in socios:
+        add_paragrafo("_" * 50, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+        add_paragrafo(s.get('nome', ''), align=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+def _ordinal(n):
+    nomes = {1: "Primeira", 2: "Segunda", 3: "Terceira", 4: "Quarta", 5: "Quinta"}
+    return nomes.get(n, str(n) + "ª")
 
 def tela_gerar_documento():
     cabecalho()
@@ -988,8 +993,8 @@ paginas = {
 
 paginas.get(st.session_state.pagina, tela_login)()
 
-# Hack de cores para botões ✏️ e 🗑️
-def aplicar_hack_cores():
+# Cores para botões ✏️ e 🗑️
+def aplicar_cores():
     components.html("""
     <script>
     const botoes = window.parent.document.querySelectorAll('button');
@@ -1008,4 +1013,4 @@ def aplicar_hack_cores():
     </script>
     """, height=0, width=0)
 
-aplicar_hack_cores()
+aplicar_cores()
